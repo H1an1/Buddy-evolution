@@ -421,12 +421,23 @@ def save_patcher_state(salt: str, stats: dict, binary_path: str):
     state_file.write_text(json.dumps(state, indent=2))
 
 
-def evolve_buddy_stats(target_peak: str, target_dump: str | None = None) -> dict | None:
+def load_buddy_config() -> dict:
+    """Load buddy config to get species lock and other settings."""
+    config_file = BUDDY_DIR / "config.json"
+    try:
+        return json.loads(config_file.read_text())
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+
+def evolve_buddy_stats(target_peak: str, target_dump: str | None = None,
+                       target_species: str | None = None) -> dict | None:
     """Full pipeline: find salt → patch binary → save state.
 
     Args:
         target_peak: Stat name to maximize (e.g. "PATIENCE")
         target_dump: Stat name to minimize (optional)
+        target_species: Species to lock (optional, reads from config if None)
 
     Returns result dict or None on failure.
     """
@@ -438,6 +449,11 @@ def evolve_buddy_stats(target_peak: str, target_dump: str | None = None) -> dict
     if not binary_path:
         return {"error": "Could not find Claude Code binary"}
 
+    # Read species lock from config if not provided
+    if target_species is None:
+        config = load_buddy_config()
+        target_species = config.get("species")
+
     # Determine current salt in binary
     current_salt = find_current_salt(binary_path)
     saved_salt = get_saved_salt()
@@ -445,13 +461,14 @@ def evolve_buddy_stats(target_peak: str, target_dump: str | None = None) -> dict
     # The salt currently in the binary
     active_salt = current_salt or saved_salt or ORIGINAL_SALT
 
-    # Search for new salt
+    # Search for new salt (with species lock)
     result = find_salt(
         user_id, target_peak, target_dump,
-        max_attempts=200000, use_bun=True,
+        target_species=target_species,
+        max_attempts=500000, use_bun=True,
     )
     if not result:
-        return {"error": f"Could not find salt for peak={target_peak}"}
+        return {"error": f"Could not find salt for peak={target_peak}, species={target_species}"}
 
     new_salt = result["salt"]
 
@@ -468,6 +485,7 @@ def evolve_buddy_stats(target_peak: str, target_dump: str | None = None) -> dict
         "success": True,
         "salt": new_salt,
         "stats": result["stats"],
+        "species": target_species,
         "attempts": result["attempts"],
         "patch": patch_result,
     }
@@ -475,9 +493,11 @@ def evolve_buddy_stats(target_peak: str, target_dump: str | None = None) -> dict
 
 if __name__ == "__main__":
     # CLI usage: python3 patcher.py PEAK_STAT [DUMP_STAT]
+    # Species is auto-read from config.json ("species" field)
     if len(sys.argv) < 2:
         print("Usage: python3 patcher.py PEAK_STAT [DUMP_STAT]")
         print(f"  Stats: {', '.join(STAT_NAMES)}")
+        print(f"  Species: auto-read from config.json (set 'species' field to lock)")
         sys.exit(1)
 
     peak = sys.argv[1].upper()
@@ -487,12 +507,19 @@ if __name__ == "__main__":
         print(f"Invalid stat: {peak}. Choose from: {', '.join(STAT_NAMES)}")
         sys.exit(1)
 
-    print(f"Searching for salt with peak={peak}" + (f", dump={dump}" if dump else "") + "...")
+    config = load_buddy_config()
+    species = config.get("species")
+    desc = f"peak={peak}"
+    if dump:
+        desc += f", dump={dump}"
+    if species:
+        desc += f", species={species}"
+    print(f"Searching for salt with {desc}...")
     result = evolve_buddy_stats(peak, dump)
 
     if result and result.get("success"):
         stats = result["stats"]
-        print(f"\nFound in {result['attempts']} attempts!")
+        print(f"\nFound in {result['attempts']} attempts! Species: {result.get('species', 'any')}")
         print(f"New stats:")
         for name in STAT_NAMES:
             bar = "█" * (stats[name] // 10) + "░" * (10 - stats[name] // 10)

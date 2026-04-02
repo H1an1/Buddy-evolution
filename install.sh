@@ -19,6 +19,14 @@ BUDDY_NAME="${BUDDY_NAME:-Buddy}"
 read -p "Pick an emoji for $BUDDY_NAME (default: 🤖): " BUDDY_EMOJI
 BUDDY_EMOJI="${BUDDY_EMOJI:-🤖}"
 
+# Ask for species lock
+echo ""
+echo "Optional: lock your buddy's species so it doesn't change when stats evolve."
+echo "Species: duck, goose, blob, cat, dragon, octopus, owl, penguin,"
+echo "         turtle, snail, ghost, axolotl, capybara, cactus, robot,"
+echo "         rabbit, mushroom, chonk"
+read -p "Lock species (blank to skip): " BUDDY_SPECIES
+
 # Ask for memory dir
 echo ""
 echo "Optional: daily memory log integration."
@@ -53,10 +61,17 @@ else
     MEMORY_JSON="null"
 fi
 
+if [[ -n "$BUDDY_SPECIES" ]]; then
+    SPECIES_JSON="\"$BUDDY_SPECIES\""
+else
+    SPECIES_JSON="null"
+fi
+
 cat > "$BUDDY_DIR/config.json" << CONF
 {
   "name": "$BUDDY_NAME",
   "emoji": "$BUDDY_EMOJI",
+  "species": $SPECIES_JSON,
   "memory_dir": $MEMORY_JSON,
   "memory_template": "# {date} Log\n\n## Summary\n",
   "memory_marker": "## Summary"
