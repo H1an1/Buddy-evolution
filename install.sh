@@ -1,0 +1,155 @@
+#!/bin/bash
+# Claude Buddy — Install Script
+# Sets up the RPG upgrade system for your Claude Code companion
+set -e
+
+BUDDY_DIR="$HOME/.claude/buddy"
+HOOKS_DIR="$HOME/.claude/hooks"
+SETTINGS="$HOME/.claude/settings.json"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+echo "🤖 Claude Buddy — Installer"
+echo ""
+
+# Ask for buddy name
+read -p "What's your buddy's name? (default: Buddy): " BUDDY_NAME
+BUDDY_NAME="${BUDDY_NAME:-Buddy}"
+
+# Ask for emoji
+read -p "Pick an emoji for $BUDDY_NAME (default: 🤖): " BUDDY_EMOJI
+BUDDY_EMOJI="${BUDDY_EMOJI:-🤖}"
+
+# Ask for memory dir
+echo ""
+echo "Optional: daily memory log integration."
+echo "If you use a daily notes system (Obsidian, etc), enter the directory."
+echo "Leave blank to skip."
+read -p "Memory directory (blank to skip): " MEMORY_DIR
+
+echo ""
+echo "Setting up $BUDDY_EMOJI $BUDDY_NAME..."
+
+# Create directories
+mkdir -p "$BUDDY_DIR"
+mkdir -p "$HOOKS_DIR"
+
+# Copy files
+cp "$SCRIPT_DIR/update.py" "$BUDDY_DIR/update.py"
+cp "$SCRIPT_DIR/titles.json" "$BUDDY_DIR/titles.json"
+cp "$SCRIPT_DIR/phrases.json" "$BUDDY_DIR/phrases.json"
+cp "$SCRIPT_DIR/statusline.sh" "$BUDDY_DIR/statusline.sh"
+cp "$SCRIPT_DIR/buddy-hook.sh" "$HOOKS_DIR/buddy-hook.sh"
+
+chmod +x "$BUDDY_DIR/update.py"
+chmod +x "$BUDDY_DIR/statusline.sh"
+chmod +x "$HOOKS_DIR/buddy-hook.sh"
+
+# Write config
+if [[ -n "$MEMORY_DIR" ]]; then
+    MEMORY_JSON="\"$(echo "$MEMORY_DIR" | sed 's/"/\\"/g')\""
+else
+    MEMORY_JSON="null"
+fi
+
+cat > "$BUDDY_DIR/config.json" << CONF
+{
+  "name": "$BUDDY_NAME",
+  "emoji": "$BUDDY_EMOJI",
+  "memory_dir": $MEMORY_JSON,
+  "memory_template": "# {date} Log\n\n## Summary\n",
+  "memory_marker": "## Summary"
+}
+CONF
+
+# Create initial stats if not exists
+if [[ ! -f "$BUDDY_DIR/stats.json" ]]; then
+    cat > "$BUDDY_DIR/stats.json" << STATS
+{
+  "name": "$BUDDY_NAME",
+  "level": 1,
+  "totalExp": 0,
+  "attributes": {
+    "coding":   { "exp": 0, "level": 1 },
+    "design":   { "exp": 0, "level": 1 },
+    "research": { "exp": 0, "level": 1 },
+    "devops":   { "exp": 0, "level": 1 },
+    "writing":  { "exp": 0, "level": 1 }
+  },
+  "titles": ["Baby $BUDDY_NAME"],
+  "activeTitle": "Baby $BUDDY_NAME",
+  "unlocked": ["total_1"],
+  "history": []
+}
+STATS
+    echo "  ✓ Created initial stats (Lv.1 Baby $BUDDY_NAME)"
+else
+    echo "  ✓ Kept existing stats (not overwritten)"
+fi
+
+# Register hook in settings.json
+if [[ -f "$SETTINGS" ]]; then
+    # Check if hook already registered
+    if grep -q "buddy-hook.sh" "$SETTINGS" 2>/dev/null; then
+        echo "  ✓ Hook already registered"
+    else
+        # Add hook using python for safe JSON manipulation
+        python3 -c "
+import json
+with open('$SETTINGS') as f:
+    settings = json.load(f)
+hooks = settings.setdefault('hooks', {})
+stop = hooks.setdefault('Stop', [])
+stop.append({'hooks': [{'type': 'command', 'command': '~/.claude/hooks/buddy-hook.sh'}]})
+settings['statusLine'] = {'type': 'command', 'command': 'bash ~/.claude/buddy/statusline.sh'}
+with open('$SETTINGS', 'w') as f:
+    json.dump(settings, f, indent=2)
+"
+        echo "  ✓ Registered Stop hook"
+        echo "  ✓ Configured statusline"
+    fi
+else
+    echo "  ⚠ No settings.json found at $SETTINGS"
+    echo "    You'll need to manually add the hook."
+fi
+
+# Install skill for /buddy command
+SKILL_DIR="$HOME/.claude/skills/buddy-status"
+mkdir -p "$SKILL_DIR"
+cat > "$SKILL_DIR/SKILL.md" << 'SKILL'
+---
+name: buddy
+description: Show your buddy's RPG stats, level, attributes, and recent history. Use when user says "/buddy", "show buddy", "buddy stats", or asks about their buddy's level/progress.
+user_invocable: true
+---
+
+# Buddy Status
+
+Read buddy's stats from `~/.claude/buddy/stats.json` and `~/.claude/buddy/config.json`, then display a formatted status card.
+
+## Instructions
+
+1. Read `~/.claude/buddy/config.json` for name and emoji
+2. Read `~/.claude/buddy/stats.json` for stats
+3. Read `~/.claude/buddy/phrases.json` for latest phrase
+4. Display a formatted status card with:
+   - Name, level, active title
+   - **Skill attributes**: All 5 bars (10 chars wide, █ filled ░ empty)
+   - Progress bar based on: next level cost = current_level * 50, fill = progress_exp / cost
+   - **Personality stats**: debugging, patience, chaos, wisdom, snark (each 0-100)
+     - Show as bar + value. Use emoji: 🐛 Debugging, ⏳ Patience, 🌀 Chaos, 🧠 Wisdom, 🔥 Snark
+     - Color: red/blue/magenta/cyan/yellow respectively
+   - Total EXP, all unlocked titles
+   - Latest unlocked phrase (last entry in `unlocked` array, look up in phrases.json, replace {name} with buddy name)
+   - Last 5 history entries, newest first
+   - Personality traits are behavioral: they change based on HOW you work, not WHAT you work on
+SKILL
+echo "  ✓ Installed /buddy skill"
+
+echo ""
+echo "Done! $BUDDY_EMOJI $BUDDY_NAME is ready."
+echo ""
+echo "  • Statusline shows $BUDDY_NAME's level in real-time"
+echo "  • Type /buddy to see full stats"
+echo "  • $BUDDY_NAME gains EXP automatically from your tasks"
+echo ""
+echo "Restart Claude Code to activate."

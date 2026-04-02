@@ -1,0 +1,46 @@
+{
+  "attributes": {
+    "coding": {
+      "1": "Script Kiddo",
+      "3": "Bug Squasher",
+      "5": "Code Weaver",
+      "7": "Architect",
+      "10": "Mass Deployer"
+    },
+    "design": {
+      "1": "Pixel Pusher",
+      "3": "Color Mixer",
+      "5": "Layout Lord",
+      "7": "Design Sage",
+      "10": "Aesthetic God"
+    },
+    "research": {
+      "1": "Curious One",
+      "3": "Link Digger",
+      "5": "Data Miner",
+      "7": "Insight Hunter",
+      "10": "Knowledge Titan"
+    },
+    "devops": {
+      "1": "Button Clicker",
+      "3": "Pipe Fitter",
+      "5": "Deploy Captain",
+      "7": "Infra Wizard",
+      "10": "Cloud Emperor"
+    },
+    "writing": {
+      "1": "Note Taker",
+      "3": "Draft Writer",
+      "5": "Word Smith",
+      "7": "Doc Master",
+      "10": "Prose Legend"
+    }
+  },
+  "total": {
+    "1": "Baby {name}",
+    "5": "Growing {name}",
+    "10": "Seasoned {name}",
+    "15": "Mighty {name}",
+    "20": "Legendary {name}"
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "name": "Buddy",
+  "emoji": "🤖",
+  "memory_dir": null,
+  "memory_template": "# {date} Log\n\n## Summary\n",
+  "memory_marker": "## Summary"
+}
