@@ -23,14 +23,19 @@ BUDDY_EMOJI="${BUDDY_EMOJI:-🤖}"
 echo ""
 echo "Detecting your buddy's species..."
 BUDDY_SPECIES=""
-DETECTED_SPECIES=$(python3 -c "
+# Output JSON: {"species": "...", "stats": {"debugging": N, ...}}
+DETECTED_JSON=$(python3 -c "
 import json, pathlib, subprocess, shutil
 
 SALT = 'friend-2026-401'
 SPECIES = ['duck','goose','blob','cat','dragon','octopus','owl','penguin',
            'turtle','snail','ghost','axolotl','capybara','cactus','robot',
            'rabbit','mushroom','chonk']
+EYES = ['·','✦','×','◉','@','°']
+HATS = ['none','crown','tophat','propeller','halo','wizard','beanie','tinyduck']
+STAT_NAMES = ['DEBUGGING','PATIENCE','CHAOS','WISDOM','SNARK']
 RARITY_W = [60, 25, 10, 4, 1]
+RARITY_FLOOR = {'common': 5, 'uncommon': 15, 'rare': 25, 'epic': 35, 'legendary': 50}
 
 def fnv1a(s):
     h = 2166136261
@@ -61,7 +66,6 @@ class Mulberry32:
     def pick(self, arr):
         return arr[int(self.next() * len(arr))]
 
-# Read user ID
 uid = None
 for p in [pathlib.Path.home()/'.claude.json', pathlib.Path.home()/'.claude'/'.config.json']:
     if p.exists():
@@ -73,17 +77,45 @@ for p in [pathlib.Path.home()/'.claude.json', pathlib.Path.home()/'.claude'/'.co
 if not uid:
     raise SystemExit(1)
 
-# Prefer Bun.hash (matches official), fallback to FNV-1a
 seed = bun_hash(uid + SALT) or fnv1a(uid + SALT)
 rng = Mulberry32(seed)
-# Roll rarity first, then species (same order as official)
+
+# Roll in official order: rarity → species → eye → hat → shiny → stats
 total = sum(RARITY_W)
 roll = rng.next() * total
-for w in RARITY_W:
+rarity = 'common'
+for i, w in enumerate(RARITY_W):
     roll -= w
-    if roll < 0: break
-print(rng.pick(SPECIES))
+    if roll < 0:
+        rarity = ['common','uncommon','rare','epic','legendary'][i]
+        break
+species = rng.pick(SPECIES)
+eye = rng.pick(EYES)
+hat = 'none' if rarity == 'common' else rng.pick(HATS)
+shiny = rng.next() < 0.01
+
+# Roll stats
+floor = RARITY_FLOOR[rarity]
+peak = rng.pick(STAT_NAMES)
+dump = rng.pick(STAT_NAMES)
+while dump == peak:
+    dump = rng.pick(STAT_NAMES)
+stats = {}
+for name in STAT_NAMES:
+    if name == peak:
+        stats[name.lower()] = min(100, floor + 50 + int(rng.next() * 30))
+    elif name == dump:
+        stats[name.lower()] = max(1, floor - 10 + int(rng.next() * 15))
+    else:
+        stats[name.lower()] = floor + int(rng.next() * 40)
+
+print(json.dumps({'species': species, 'stats': stats}))
 " 2>/dev/null)
+
+DETECTED_SPECIES=""
+if [[ -n "$DETECTED_JSON" ]]; then
+    DETECTED_SPECIES=$(echo "$DETECTED_JSON" | python3 -c "import sys,json; print(json.load(sys.stdin)['species'])")
+fi
 
 if [[ -n "$DETECTED_SPECIES" ]]; then
     echo "  Detected: $DETECTED_SPECIES"
@@ -154,7 +186,45 @@ CONF
 
 # Create initial stats if not exists
 if [[ ! -f "$BUDDY_DIR/stats.json" ]]; then
-    cat > "$BUDDY_DIR/stats.json" << STATS
+    # Use official rolled personality stats as starting values
+    if [[ -n "$DETECTED_JSON" ]]; then
+        python3 -c "
+import json, sys
+detected = json.loads('$DETECTED_JSON')
+stats = detected.get('stats', {})
+initial = {
+    'name': '$BUDDY_NAME',
+    'level': 1,
+    'totalExp': 0,
+    'attributes': {
+        'coding':   {'exp': 0, 'level': 1},
+        'design':   {'exp': 0, 'level': 1},
+        'research': {'exp': 0, 'level': 1},
+        'devops':   {'exp': 0, 'level': 1},
+        'writing':  {'exp': 0, 'level': 1}
+    },
+    'personality': {
+        'debugging': stats.get('debugging', 50),
+        'patience':  stats.get('patience', 50),
+        'chaos':     stats.get('chaos', 50),
+        'wisdom':    stats.get('wisdom', 50),
+        'snark':     stats.get('snark', 50)
+    },
+    'titles': ['Baby $BUDDY_NAME'],
+    'activeTitle': 'Baby $BUDDY_NAME',
+    'unlocked': ['total_1'],
+    'history': []
+}
+with open('$BUDDY_DIR/stats.json', 'w') as f:
+    json.dump(initial, f, indent=2)
+pers = initial['personality']
+print(f'  ✓ Created initial stats with official personality:')
+for k, v in pers.items():
+    bar = '█' * (v // 10) + '░' * (10 - v // 10)
+    print(f'    {k:10s} {bar} {v}')
+"
+    else
+        cat > "$BUDDY_DIR/stats.json" << STATS
 {
   "name": "$BUDDY_NAME",
   "level": 1,
@@ -166,13 +236,18 @@ if [[ ! -f "$BUDDY_DIR/stats.json" ]]; then
     "devops":   { "exp": 0, "level": 1 },
     "writing":  { "exp": 0, "level": 1 }
   },
+  "personality": {
+    "debugging": 50, "patience": 50, "chaos": 50,
+    "wisdom": 50, "snark": 50
+  },
   "titles": ["Baby $BUDDY_NAME"],
   "activeTitle": "Baby $BUDDY_NAME",
   "unlocked": ["total_1"],
   "history": []
 }
 STATS
-    echo "  ✓ Created initial stats (Lv.1 Baby $BUDDY_NAME)"
+        echo "  ✓ Created initial stats (default personality)"
+    fi
 else
     echo "  ✓ Kept existing stats (not overwritten)"
 fi

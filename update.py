@@ -44,8 +44,106 @@ def load_config() -> dict:
     return config
 
 
+def roll_official_personality() -> dict[str, int]:
+    """Roll personality stats using the same algorithm as Claude Code's official buddy."""
+    import subprocess
+
+    SALT = "friend-2026-401"
+    SPECIES_LIST = [
+        "duck", "goose", "blob", "cat", "dragon", "octopus", "owl", "penguin",
+        "turtle", "snail", "ghost", "axolotl", "capybara", "cactus", "robot",
+        "rabbit", "mushroom", "chonk",
+    ]
+    EYES = ["·", "✦", "×", "◉", "@", "°"]
+    HATS = ["none", "crown", "tophat", "propeller", "halo", "wizard", "beanie", "tinyduck"]
+    STAT_NAMES = ["DEBUGGING", "PATIENCE", "CHAOS", "WISDOM", "SNARK"]
+    RARITY_W = [60, 25, 10, 4, 1]
+    RARITY_NAMES = ["common", "uncommon", "rare", "epic", "legendary"]
+    RARITY_FLOOR = {"common": 5, "uncommon": 15, "rare": 25, "epic": 35, "legendary": 50}
+
+    class Mulberry32:
+        def __init__(self, seed):
+            self.a = seed & 0xFFFFFFFF
+        def next(self):
+            self.a = (self.a + 0x6D2B79F5) & 0xFFFFFFFF
+            t = self.a
+            t = ((t ^ (t >> 15)) * (1 | t)) & 0xFFFFFFFF
+            t = ((t + (((t ^ (t >> 7)) * (61 | t)) & 0xFFFFFFFF)) ^ t) & 0xFFFFFFFF
+            return ((t ^ (t >> 14)) & 0xFFFFFFFF) / 4294967296.0
+        def pick(self, arr):
+            return arr[int(self.next() * len(arr))]
+
+    def fnv1a(s):
+        h = 2166136261
+        for c in s:
+            h = ((h ^ ord(c)) * 16777619) & 0xFFFFFFFF
+        return h
+
+    def bun_hash(s):
+        bun = shutil.which("bun") or str(Path.home() / ".bun" / "bin" / "bun")
+        if not Path(bun).exists():
+            return None
+        try:
+            r = subprocess.run(
+                [bun, "-e", f'console.log(Number(Bun.hash("{s}")&0xFFFFFFFFn))'],
+                capture_output=True, text=True, timeout=5,
+            )
+            return int(r.stdout.strip()) if r.returncode == 0 else None
+        except Exception:
+            return None
+
+    # Read user ID
+    uid = None
+    for p in [Path.home() / ".claude.json", Path.home() / ".claude" / ".config.json"]:
+        if p.exists():
+            try:
+                cfg = json.loads(p.read_text())
+                uid = cfg.get("oauthAccount", {}).get("accountUuid") or cfg.get("userID")
+                if uid:
+                    break
+            except (json.JSONDecodeError, KeyError):
+                pass
+    if not uid:
+        return {"debugging": 50, "patience": 50, "chaos": 50, "wisdom": 50, "snark": 50}
+
+    seed = bun_hash(uid + SALT) or fnv1a(uid + SALT)
+    rng = Mulberry32(seed)
+
+    # Roll in official order: rarity → species → eye → hat → shiny → stats
+    total = sum(RARITY_W)
+    roll = rng.next() * total
+    rarity = "common"
+    for i, w in enumerate(RARITY_W):
+        roll -= w
+        if roll < 0:
+            rarity = RARITY_NAMES[i]
+            break
+    rng.pick(SPECIES_LIST)  # species
+    rng.pick(EYES)          # eye
+    if rarity != "common":
+        rng.pick(HATS)      # hat
+    rng.next()              # shiny roll
+
+    # Roll stats
+    floor = RARITY_FLOOR[rarity]
+    peak = rng.pick(STAT_NAMES)
+    dump = rng.pick(STAT_NAMES)
+    while dump == peak:
+        dump = rng.pick(STAT_NAMES)
+    stats = {}
+    for name in STAT_NAMES:
+        if name == peak:
+            stats[name.lower()] = min(100, floor + 50 + int(rng.next() * 30))
+        elif name == dump:
+            stats[name.lower()] = max(1, floor - 10 + int(rng.next() * 15))
+        else:
+            stats[name.lower()] = floor + int(rng.next() * 40)
+    return stats
+
+
 def make_default_stats(config: dict) -> dict:
     name = config["name"]
+    personality = roll_official_personality()
     return {
         "name": name,
         "level": 1,
@@ -57,13 +155,7 @@ def make_default_stats(config: dict) -> dict:
             "devops":   {"exp": 0, "level": 1},
             "writing":  {"exp": 0, "level": 1},
         },
-        "personality": {
-            "debugging": 50,
-            "patience":  50,
-            "chaos":     50,
-            "wisdom":    50,
-            "snark":     50,
-        },
+        "personality": personality,
         "titles": [f"Baby {name}"],
         "activeTitle": f"Baby {name}",
         "unlocked": ["total_1"],
@@ -392,10 +484,7 @@ def apply_personality(stats: dict, deltas: dict[str, int]) -> bool:
 
     Returns True if the dominant trait changed (triggers buddy re-roll).
     """
-    personality = stats.setdefault("personality", {
-        "debugging": 50, "patience": 50, "chaos": 50,
-        "wisdom": 50, "snark": 50,
-    })
+    personality = stats.setdefault("personality", roll_official_personality())
     old_dominant = max(personality, key=personality.get) if personality else None
 
     for attr, delta in deltas.items():
