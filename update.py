@@ -313,15 +313,52 @@ def analyze_personality(signals: dict, stats: dict) -> dict[str, int]:
     return deltas
 
 
-def apply_personality(stats: dict, deltas: dict[str, int]):
-    """Apply personality deltas to stats, clamping to 0-100."""
+def apply_personality(stats: dict, deltas: dict[str, int]) -> bool:
+    """Apply personality deltas to stats, clamping to 0-100.
+
+    Returns True if the dominant trait changed (triggers buddy re-roll).
+    """
     personality = stats.setdefault("personality", {
         "debugging": 50, "patience": 50, "chaos": 50,
         "wisdom": 50, "snark": 50,
     })
+    old_dominant = max(personality, key=personality.get) if personality else None
+
     for attr, delta in deltas.items():
         old = personality.get(attr, 50)
         personality[attr] = max(0, min(100, old + delta))
+
+    new_dominant = max(personality, key=personality.get)
+    return old_dominant != new_dominant
+
+
+def trigger_buddy_reroll(dominant_trait: str):
+    """Trigger a binary patch so official buddy stats match growth.
+
+    Runs in background to avoid blocking. Maps our personality trait
+    names to the official stat names.
+    """
+    TRAIT_TO_STAT = {
+        "debugging": "DEBUGGING",
+        "patience": "PATIENCE",
+        "chaos": "CHAOS",
+        "wisdom": "WISDOM",
+        "snark": "SNARK",
+    }
+    target = TRAIT_TO_STAT.get(dominant_trait)
+    if not target:
+        return
+
+    patcher_script = BUDDY_DIR / "patcher.py"
+    if not patcher_script.exists():
+        return
+
+    # Run in background — patching takes a few seconds
+    subprocess.Popen(
+        [sys.executable, str(patcher_script), target],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
 
 
 # ── Evolution System ──────────────────────────────────────────────
@@ -790,8 +827,19 @@ def main():
     last_personality_session = stats.get("lastPersonalitySession")
     if session_id and session_id != last_personality_session:
         personality_deltas = analyze_personality(signals, stats)
-        apply_personality(stats, personality_deltas)
+        dominant_changed = apply_personality(stats, personality_deltas)
         stats["lastPersonalitySession"] = session_id
+
+        # If dominant trait changed, re-roll official buddy stats to match
+        if dominant_changed:
+            new_dominant = max(
+                stats.get("personality", {}),
+                key=stats.get("personality", {}).get,
+            )
+            trigger_buddy_reroll(new_dominant)
+            memory_lines.append(
+                f"- [{time_str}] {emoji} {name}'s dominant trait shifted to {new_dominant.capitalize()}! Re-rolling official stats..."
+            )
 
     # Evolution check
     new_evo = check_evolution(stats)
