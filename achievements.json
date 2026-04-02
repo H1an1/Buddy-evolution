@@ -83,6 +83,55 @@
       "icon": "🌱",
       "description": "Come back after 7+ days away",
       "hidden": true
+    },
+    {
+      "id": "weekly_warrior",
+      "name": "Weekly Warrior",
+      "icon": "⚔️",
+      "description": "7-day coding streak",
+      "hidden": false
+    },
+    {
+      "id": "monthly_machine",
+      "name": "Monthly Machine",
+      "icon": "🤖",
+      "description": "30-day coding streak",
+      "hidden": true
+    },
+    {
+      "id": "centurion",
+      "name": "Centurion",
+      "icon": "🏛️",
+      "description": "100-day coding streak",
+      "hidden": true
+    },
+    {
+      "id": "jealous_buddy",
+      "name": "Jealous Buddy",
+      "icon": "😤",
+      "description": "Mention a rival AI tool",
+      "hidden": true
+    },
+    {
+      "id": "danger_zone",
+      "name": "Danger Zone",
+      "icon": "😱",
+      "description": "Run a dangerous command",
+      "hidden": true
+    },
+    {
+      "id": "potty_mouth",
+      "name": "Potty Mouth",
+      "icon": "🤬",
+      "description": "Excessive profanity in one session",
+      "hidden": true
+    },
+    {
+      "id": "test_driven",
+      "name": "Test Driven",
+      "icon": "✅",
+      "description": "Write code AND run tests in every session for 7 days",
+      "hidden": true
     }
   ]
 }

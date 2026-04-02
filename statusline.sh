@@ -75,10 +75,19 @@ if pers:
 else:
     trait_str = ''
 
-# Mood
+# Mood (overridden by reaction if recent)
 MOOD_EMOJI = {'zen': '\U0001f60c', 'hyper': '\u26a1', 'sass': '\U0001f485', 'nerd': '\U0001f913', 'grit': '\U0001f527', 'chill': '\U0001f60e'}
-mood = stats.get('mood', 'chill')
-mood_e = MOOD_EMOJI.get(mood, '')
+reaction = stats.get('lastReaction', {})
+if reaction and reaction.get('emoji'):
+    mood_e = reaction['emoji']
+else:
+    mood = stats.get('mood', 'chill')
+    mood_e = MOOD_EMOJI.get(mood, '')
 
-print(f'{pc}{emoji} {name} Lv.{level}{RESET} {BOLD}\"{title}\"{RESET} {mood_e} \u2502 {attr_str}{trait_str}')
+# Streak
+streak = stats.get('streak', {})
+streak_n = streak.get('current', 0)
+streak_str = f' \U0001f525{streak_n}d' if streak_n >= 3 else ''
+
+print(f'{pc}{emoji} {name} Lv.{level}{RESET} {BOLD}\"{title}\"{RESET} {mood_e}{streak_str} \u2502 {attr_str}{trait_str}')
 " 2>/dev/null || echo "Buddy"

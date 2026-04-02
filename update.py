@@ -191,6 +191,63 @@ FRUSTRATION_SIGNALS = [
     "什么鬼", "搞毛", "烦死", "崩溃", "无语", "坑",
 ]
 
+RIVAL_SIGNALS = [
+    "gpt", "chatgpt", "openai", "copilot", "gemini", "cursor", "windsurf",
+    "codeium", "tabnine", "devin", "codex",
+]
+
+DANGER_SIGNALS = [
+    "rm -rf", "git reset --hard", "drop table", "drop database",
+    "force push", "--force", "git clean -f", "truncate",
+    "format c:", "del /f", "sudo rm",
+]
+
+DIARY_TEMPLATES = {
+    "zen": [
+        "A calm session. We {action} together. All is well.",
+        "Peaceful work today. {action}. I am content.",
+        "Quiet and focused. {action}. The code flows.",
+    ],
+    "hyper": [
+        "{action}!! Also 3 OTHER THINGS!! LET'S GOOO!!!",
+        "WE {action} AND IT WAS AWESOME!! Can we do more??",
+        "SO MUCH ENERGY! {action}! WHAT'S NEXT?!",
+    ],
+    "sass": [
+        "They made me {action}. Thrilling, truly.",
+        "Another day, another {action}. I live to serve. Allegedly.",
+        "Oh joy. We {action}. My circuits are tingling. Not.",
+    ],
+    "nerd": [
+        "Interesting session. We {action}. I've catalogued 47 observations.",
+        "Technically speaking, we {action}. Fascinating data points emerged.",
+        "Today's analysis: {action}. Efficiency rating: adequate.",
+    ],
+    "grit": [
+        "Tough session. We {action}. But we got through it.",
+        "Errors everywhere. But we {action} and kept going.",
+        "Battle-tested today. {action}. Scars build character.",
+    ],
+    "chill": [
+        "Relaxed session. {action}. Good vibes.",
+        "Easy day. We {action}. No drama.",
+        "Chill. {action}. That's about it.",
+    ],
+}
+
+DREAM_TEMPLATES = [
+    "I dreamed I was a {species}... nested 47 levels deep in a React tree... 😱",
+    "Had a nightmare about an infinite loop. Woke up when the stack overflowed.",
+    "Dreamed I could finally read your handwriting. Then I woke up.",
+    "I dreamed all the tests passed on the first try. What a fantasy.",
+    "Had a dream where I was a senior engineer. Then a junior pushed to main.",
+    "Dreamed about a world without merge conflicts. Beautiful, impossible world.",
+    "I dreamed I was debugging... in production... with no logs... 😰",
+    "Had a lovely dream about type safety. Everything was strictly typed. Paradise.",
+    "Dreamed I evolved into a Legendary. Then the alarm went off.",
+    "I dreamed about {last_type}. Specifically about doing it forever. Ugh.",
+]
+
 
 def analyze_personality(signals: dict, stats: dict, user_messages: list[str] | None = None) -> dict[str, int]:
     """Analyze behavioral signals and return personality stat changes.
@@ -302,6 +359,31 @@ def analyze_personality(signals: dict, stats: dict, user_messages: list[str] | N
         if frustration_hits >= 1:
             deltas["snark"] += 1
 
+    # --- JEALOUSY --- mentioning rival AI tools
+    if user_messages:
+        all_text = " ".join(user_messages).lower()
+        rival_hits = sum(1 for r in RIVAL_SIGNALS if r in all_text)
+        if rival_hits >= 1:
+            deltas["snark"] += 2  # buddy gets jealous
+
+    # --- FEAR --- dangerous commands make buddy cautious
+    bash_commands = " ".join(
+        str(v) for v in tools.keys()
+    ).lower() if tools else ""
+    # Check user messages for dangerous commands
+    if user_messages:
+        all_text = " ".join(user_messages).lower()
+        danger_hits = sum(1 for d in DANGER_SIGNALS if d in all_text)
+        if danger_hits >= 1:
+            deltas["chaos"] -= 1  # buddy gets scared straight
+
+    # --- CODE HYGIENE --- wrote code but didn't test
+    if write_tools > 5 and tools.get("Bash", 0) < 2:
+        deltas["wisdom"] -= 1  # no testing = unwise
+    # Wrote code AND tested = reliable
+    if write_tools > 3 and tools.get("Bash", 0) > 3:
+        deltas["debugging"] += 1
+
     return deltas
 
 
@@ -407,7 +489,7 @@ LANG_KEYWORDS = {
     "shell": ["bash", "zsh", ".sh", "shell"],
 }
 
-def check_achievements(stats: dict, signals: dict, classification: dict | None) -> list[str]:
+def check_achievements(stats: dict, signals: dict, classification: dict | None, user_messages: list[str] | None = None) -> list[str]:
     """Check for newly unlocked achievements. Returns list of achievement ids."""
     unlocked = stats.get("achievements", [])
     newly = []
@@ -503,6 +585,25 @@ def check_achievements(stats: dict, signals: dict, classification: dict | None) 
                 unlock("touch_grass")
         except (ValueError, ImportError):
             pass
+
+    # Jealous Buddy — mention rival AI
+    if user_messages:
+        all_lower = " ".join(user_messages).lower()
+        if any(r in all_lower for r in RIVAL_SIGNALS):
+            unlock("jealous_buddy")
+
+    # Danger Zone — dangerous command
+    if user_messages:
+        all_lower = " ".join(user_messages).lower()
+        if any(d in all_lower for d in DANGER_SIGNALS):
+            unlock("danger_zone")
+
+    # Potty Mouth — lots of profanity
+    if user_messages:
+        all_lower = " ".join(user_messages).lower()
+        profanity = sum(1 for w in FRUSTRATION_SIGNALS if w in all_lower)
+        if profanity >= 5:
+            unlock("potty_mouth")
 
     return newly
 
@@ -845,7 +946,7 @@ def main():
         )
 
     # Achievement check
-    new_achievements = check_achievements(stats, signals, classification)
+    new_achievements = check_achievements(stats, signals, classification, user_messages)
     achv_data = load_json(ACHIEVEMENTS_FILE, {}).get("achievements", [])
     achv_map = {a["id"]: a for a in achv_data}
     achieved = stats.setdefault("achievements", [])
@@ -863,6 +964,97 @@ def main():
 
     # Season tracking
     update_season(stats, exp, task_type)
+
+    # --- Streak tracking ---
+    today = now.strftime("%Y-%m-%d")
+    streak = stats.setdefault("streak", {"current": 0, "best": 0, "lastDate": None})
+    last_date = streak.get("lastDate")
+    if last_date != today:
+        if last_date:
+            try:
+                from datetime import datetime as _dt, timedelta
+                prev = _dt.strptime(last_date, "%Y-%m-%d")
+                diff = (_dt.strptime(today, "%Y-%m-%d") - prev).days
+                if diff == 1:
+                    streak["current"] += 1
+                elif diff > 1:
+                    streak["current"] = 1  # streak broken
+            except ValueError:
+                streak["current"] = 1
+        else:
+            streak["current"] = 1
+        streak["lastDate"] = today
+        streak["best"] = max(streak["best"], streak["current"])
+
+        # Streak achievements
+        achieved = stats.setdefault("achievements", [])
+        if streak["current"] >= 7 and "weekly_warrior" not in achieved:
+            achieved.append("weekly_warrior")
+            memory_lines.append(f"- [{time_str}] ⚔️ Achievement: Weekly Warrior! (7-day streak)")
+        if streak["current"] >= 30 and "monthly_machine" not in achieved:
+            achieved.append("monthly_machine")
+            memory_lines.append(f"- [{time_str}] 🤖 Achievement: Monthly Machine! (30-day streak)")
+        if streak["current"] >= 100 and "centurion" not in achieved:
+            achieved.append("centurion")
+            memory_lines.append(f"- [{time_str}] 🏛️ Achievement: Centurion! (100-day streak)")
+
+    # --- Birthday tracking ---
+    birthday = stats.get("birthday")
+    if not birthday:
+        stats["birthday"] = today
+    elif birthday == today[5:]:  # MM-DD match (anniversary)
+        from datetime import datetime as _dt
+        birth_year = int(birthday[:4]) if len(birthday) == 10 else now.year
+        years = now.year - birth_year
+        if years > 0:
+            achieved = stats.setdefault("achievements", [])
+            achv_id = f"anniversary_{years}"
+            if achv_id not in achieved:
+                achieved.append(achv_id)
+                memory_lines.append(
+                    f"- [{time_str}] 🎂 Happy {years}-year anniversary, {name}!"
+                )
+
+    # --- Dream system --- (away > 8 hours)
+    last_seen = stats.get("lastSeen")
+    if last_seen:
+        try:
+            from datetime import datetime as _dt
+            away_hours = (now - _dt.fromisoformat(last_seen)).total_seconds() / 3600
+            if away_hours >= 8:
+                import random as _rnd
+                _rnd.seed(int(now.timestamp()))
+                dream = _rnd.choice(DREAM_TEMPLATES)
+                last_type = "coding"
+                if stats.get("history"):
+                    last_type = stats["history"][-1].get("type", "coding")
+                dream = dream.replace("{species}", _rnd.choice(
+                    ["React component", "Docker container", "Lambda function",
+                     "CSS selector", "git branch", "API endpoint"]
+                ))
+                dream = dream.replace("{last_type}", last_type)
+                stats["lastDream"] = dream
+        except (ValueError, ImportError):
+            pass
+
+    # --- Diary entry --- (mood-based session summary)
+    mood = stats.get("mood", "chill")
+    templates = DIARY_TEMPLATES.get(mood, DIARY_TEMPLATES["chill"])
+    import random as _rnd
+    _rnd.seed(int(now.timestamp()) + hash(summary))
+    action = summary.lower().rstrip(".")
+    if len(action) > 60:
+        action = action[:57] + "..."
+    diary_entry = _rnd.choice(templates).replace("{action}", action)
+    stats["lastDiary"] = diary_entry
+
+    # --- Jealousy / Fear reactions ---
+    if user_messages:
+        all_lower = " ".join(user_messages).lower()
+        if any(r in all_lower for r in RIVAL_SIGNALS):
+            stats["lastReaction"] = {"type": "jealous", "emoji": "😤", "time": time_str}
+        if any(d in all_lower for d in DANGER_SIGNALS):
+            stats["lastReaction"] = {"type": "scared", "emoji": "😱", "time": time_str}
 
     stats["lastSeen"] = now.isoformat()
 
