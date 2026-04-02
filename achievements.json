@@ -1,0 +1,88 @@
+{
+  "achievements": [
+    {
+      "id": "night_owl",
+      "name": "Night Owl",
+      "icon": "🦉",
+      "description": "Work past 2 AM",
+      "hidden": true
+    },
+    {
+      "id": "polyglot",
+      "name": "Polyglot",
+      "icon": "🌍",
+      "description": "Use 3+ programming languages in one session",
+      "hidden": true
+    },
+    {
+      "id": "speedrunner",
+      "name": "Speedrunner",
+      "icon": "⚡",
+      "description": "Complete a large task in under 5 minutes",
+      "hidden": true
+    },
+    {
+      "id": "zen_master",
+      "name": "Zen Master",
+      "icon": "🧘",
+      "description": "Reach Patience 95",
+      "hidden": true
+    },
+    {
+      "id": "chaotic_evil",
+      "name": "Chaotic Evil",
+      "icon": "😈",
+      "description": "Chaos 90+ and Snark 90+ at the same time",
+      "hidden": true
+    },
+    {
+      "id": "full_stack",
+      "name": "Full Stack",
+      "icon": "🏆",
+      "description": "All 5 skill attributes at Lv.5+",
+      "hidden": true
+    },
+    {
+      "id": "first_blood",
+      "name": "First Blood",
+      "icon": "🩸",
+      "description": "First ever EXP gain",
+      "hidden": false
+    },
+    {
+      "id": "marathon",
+      "name": "Marathon",
+      "icon": "🏃",
+      "description": "A single session over 4 hours",
+      "hidden": true
+    },
+    {
+      "id": "silent_type",
+      "name": "Silent Type",
+      "icon": "🤫",
+      "description": "Wisdom 90+ and Snark below 20",
+      "hidden": true
+    },
+    {
+      "id": "comeback_kid",
+      "name": "Comeback Kid",
+      "icon": "💪",
+      "description": "5+ errors followed by success in one session",
+      "hidden": true
+    },
+    {
+      "id": "agent_army",
+      "name": "Agent Army",
+      "icon": "🤖",
+      "description": "Spawn 10+ agents in one session",
+      "hidden": true
+    },
+    {
+      "id": "touch_grass",
+      "name": "Touch Grass",
+      "icon": "🌱",
+      "description": "Come back after 7+ days away",
+      "hidden": true
+    }
+  ]
+}

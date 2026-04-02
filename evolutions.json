@@ -1,0 +1,34 @@
+{
+  "stages": [
+    {
+      "id": "base",
+      "name": "Hatchling",
+      "description": "Just hatched. Small, curious, and full of potential.",
+      "conditions": {}
+    },
+    {
+      "id": "evo1",
+      "name": "Apprentice",
+      "description": "Growing steadily. Starting to develop a personality.",
+      "conditions": {"totalLevel": 5, "anySkillLevel": 3}
+    },
+    {
+      "id": "evo2",
+      "name": "Specialist",
+      "description": "Focused and capable. Has a clear area of expertise.",
+      "conditions": {"totalLevel": 10, "anySkillLevel": 5}
+    },
+    {
+      "id": "evo3",
+      "name": "Veteran",
+      "description": "Battle-hardened. Has seen it all and lived to tell the tale.",
+      "conditions": {"totalLevel": 15, "allSkillsMinLevel": 3}
+    },
+    {
+      "id": "evo4",
+      "name": "Ascended",
+      "description": "Transcendent. A being of pure code and wisdom.",
+      "conditions": {"totalLevel": 20, "allSkillsMinLevel": 5, "anyPersonality": 90}
+    }
+  ]
+}

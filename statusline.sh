@@ -75,5 +75,10 @@ if pers:
 else:
     trait_str = ''
 
-print(f'{pc}{emoji} {name} Lv.{level}{RESET} {BOLD}\"{title}\"{RESET} \u2502 {attr_str}{trait_str}')
+# Mood
+MOOD_EMOJI = {'zen': '\U0001f60c', 'hyper': '\u26a1', 'sass': '\U0001f485', 'nerd': '\U0001f913', 'grit': '\U0001f527', 'chill': '\U0001f60e'}
+mood = stats.get('mood', 'chill')
+mood_e = MOOD_EMOJI.get(mood, '')
+
+print(f'{pc}{emoji} {name} Lv.{level}{RESET} {BOLD}\"{title}\"{RESET} {mood_e} \u2502 {attr_str}{trait_str}')
 " 2>/dev/null || echo "Buddy"

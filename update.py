@@ -324,6 +324,218 @@ def apply_personality(stats: dict, deltas: dict[str, int]):
         personality[attr] = max(0, min(100, old + delta))
 
 
+# ── Evolution System ──────────────────────────────────────────────
+
+EVOLUTIONS_FILE = BUDDY_DIR / "evolutions.json"
+
+def check_evolution(stats: dict) -> str | None:
+    """Check if buddy should evolve. Returns new stage id or None."""
+    evos = load_json(EVOLUTIONS_FILE, {}).get("stages", [])
+    current_stage = stats.get("evolution", "base")
+    attrs = stats.get("attributes", {})
+    pers = stats.get("personality", {})
+    total_level = stats.get("level", 1)
+
+    best_stage = current_stage
+    for evo in evos:
+        conds = evo.get("conditions", {})
+        if not conds:  # base stage
+            continue
+        met = True
+        if "totalLevel" in conds and total_level < conds["totalLevel"]:
+            met = False
+        if "anySkillLevel" in conds:
+            if not any(a["level"] >= conds["anySkillLevel"] for a in attrs.values()):
+                met = False
+        if "allSkillsMinLevel" in conds:
+            if not all(a["level"] >= conds["allSkillsMinLevel"] for a in attrs.values()):
+                met = False
+        if "anyPersonality" in conds:
+            if not any(v >= conds["anyPersonality"] for v in pers.values()):
+                met = False
+        if met:
+            best_stage = evo["id"]
+
+    if best_stage != current_stage:
+        return best_stage
+    return None
+
+
+# ── Achievement System ────────────────────────────────────────────
+
+ACHIEVEMENTS_FILE = BUDDY_DIR / "achievements.json"
+
+LANG_KEYWORDS = {
+    "python": ["python", "pip", ".py", "django", "flask", "fastapi"],
+    "javascript": ["javascript", "node", ".js", "npm", "react", "vue", "next"],
+    "typescript": ["typescript", ".ts", ".tsx", "tsc"],
+    "go": [" go ", "golang", ".go", "goroutine"],
+    "rust": ["rust", "cargo", ".rs"],
+    "swift": ["swift", "swiftui", "xcode", ".swift"],
+    "ruby": ["ruby", "rails", ".rb", "gem"],
+    "java": ["java", "spring", "gradle", ".java"],
+    "c++": ["c++", "cpp", ".cpp", ".hpp"],
+    "shell": ["bash", "zsh", ".sh", "shell"],
+}
+
+def check_achievements(stats: dict, signals: dict, classification: dict | None) -> list[str]:
+    """Check for newly unlocked achievements. Returns list of achievement ids."""
+    unlocked = stats.get("achievements", [])
+    newly = []
+    attrs = stats.get("attributes", {})
+    pers = stats.get("personality", {})
+    timestamps = signals.get("timestamps", [])
+    errors = signals.get("error_count", 0)
+    retries = signals.get("retry_patterns", 0)
+    tools = signals.get("tool_counts", {})
+
+    def unlock(aid):
+        if aid not in unlocked:
+            newly.append(aid)
+
+    # First Blood — first ever EXP
+    if stats.get("totalExp", 0) > 0 and "first_blood" not in unlocked:
+        unlock("first_blood")
+
+    # Night Owl — work past 2 AM
+    if timestamps:
+        try:
+            from datetime import datetime as _dt
+            last = _dt.fromisoformat(timestamps[-1].replace("Z", "+00:00"))
+            if 2 <= last.hour < 5:
+                unlock("night_owl")
+        except (ValueError, ImportError):
+            pass
+
+    # Marathon — 4+ hour session
+    if len(timestamps) >= 2:
+        try:
+            from datetime import datetime as _dt
+            first = _dt.fromisoformat(timestamps[0].replace("Z", "+00:00"))
+            last = _dt.fromisoformat(timestamps[-1].replace("Z", "+00:00"))
+            if (last - first).total_seconds() > 4 * 3600:
+                unlock("marathon")
+        except (ValueError, ImportError):
+            pass
+
+    # Speedrunner — large task in under 5 minutes
+    if classification and classification.get("size") == "large":
+        if len(timestamps) >= 2:
+            try:
+                from datetime import datetime as _dt
+                first = _dt.fromisoformat(timestamps[0].replace("Z", "+00:00"))
+                last = _dt.fromisoformat(timestamps[-1].replace("Z", "+00:00"))
+                if (last - first).total_seconds() < 300:
+                    unlock("speedrunner")
+            except (ValueError, ImportError):
+                pass
+
+    # Polyglot — 3+ languages in conversation
+    conv_lower = "\n".join(signals.get("_all_text", [])).lower() if "_all_text" in signals else ""
+    if conv_lower:
+        lang_count = sum(
+            1 for lang, kws in LANG_KEYWORDS.items()
+            if any(kw in conv_lower for kw in kws)
+        )
+        if lang_count >= 3:
+            unlock("polyglot")
+
+    # Zen Master — Patience 95+
+    if pers.get("patience", 0) >= 95:
+        unlock("zen_master")
+
+    # Chaotic Evil — Chaos 90+ and Snark 90+
+    if pers.get("chaos", 0) >= 90 and pers.get("snark", 0) >= 90:
+        unlock("chaotic_evil")
+
+    # Silent Type — Wisdom 90+ and Snark < 20
+    if pers.get("wisdom", 0) >= 90 and pers.get("snark", 0) < 20:
+        unlock("silent_type")
+
+    # Full Stack — all skills Lv.5+
+    if all(a.get("level", 0) >= 5 for a in attrs.values()):
+        unlock("full_stack")
+
+    # Comeback Kid — 5+ errors with retries
+    if errors >= 5 and retries >= 3:
+        unlock("comeback_kid")
+
+    # Agent Army — 10+ agents in one session
+    if tools.get("Agent", 0) >= 10:
+        unlock("agent_army")
+
+    # Touch Grass — 7+ days away
+    last_seen = stats.get("lastSeen")
+    if last_seen:
+        try:
+            from datetime import datetime as _dt
+            days = (_dt.now() - _dt.fromisoformat(last_seen)).days
+            if days >= 7:
+                unlock("touch_grass")
+        except (ValueError, ImportError):
+            pass
+
+    return newly
+
+
+# ── Mood System ───────────────────────────────────────────────────
+
+MOODS = {
+    "zen":   {"trigger": "patience", "threshold": 70, "emoji": "😌", "tone": "calm and thoughtful"},
+    "hyper": {"trigger": "chaos",    "threshold": 70, "emoji": "⚡", "tone": "excited and unpredictable"},
+    "sass":  {"trigger": "snark",    "threshold": 70, "emoji": "💅", "tone": "witty and sarcastic"},
+    "nerd":  {"trigger": "wisdom",   "threshold": 70, "emoji": "🤓", "tone": "analytical and curious"},
+    "grit":  {"trigger": "debugging","threshold": 70, "emoji": "🔧", "tone": "determined and focused"},
+    "chill": {"trigger": None,       "threshold": 0,  "emoji": "😎", "tone": "relaxed and easygoing"},
+}
+
+def compute_mood(stats: dict) -> str:
+    """Determine buddy's current mood from personality stats."""
+    pers = stats.get("personality", {})
+    # Find highest personality stat above threshold
+    best_mood = "chill"
+    best_val = 0
+    for mood_id, info in MOODS.items():
+        trait = info["trigger"]
+        if trait is None:
+            continue
+        val = pers.get(trait, 50)
+        if val >= info["threshold"] and val > best_val:
+            best_mood = mood_id
+            best_val = val
+    return best_mood
+
+
+# ── Season System ─────────────────────────────────────────────────
+
+def update_season(stats: dict, exp: int, task_type: str):
+    """Track monthly season stats and award badges."""
+    now = datetime.now()
+    season_key = now.strftime("%Y-%m")
+    seasons = stats.setdefault("seasons", {})
+    current = seasons.setdefault(season_key, {
+        "totalExp": 0,
+        "sessions": 0,
+        "topType": {},
+        "badges": [],
+    })
+    current["totalExp"] += exp
+    current["topType"][task_type] = current["topType"].get(task_type, 0) + exp
+
+    # Check for season badges
+    badges = current["badges"]
+    if current["totalExp"] >= 100 and "century" not in badges:
+        badges.append("century")  # 100+ EXP in a month
+    if current["totalExp"] >= 500 and "powerhouse" not in badges:
+        badges.append("powerhouse")  # 500+ EXP
+    if current["totalExp"] >= 1000 and "legendary_month" not in badges:
+        badges.append("legendary_month")  # 1000+ EXP
+    if len(current["topType"]) >= 4 and "versatile" not in badges:
+        badges.append("versatile")  # 4+ different skill types in a month
+    if len(current["topType"]) >= 5 and "renaissance" not in badges:
+        badges.append("renaissance")  # all 5 types in a month
+
+
 KEYWORDS = {
     "coding": [
         "bug", "fix", "code", "function", "implement", "refactor", "component",
@@ -580,6 +792,38 @@ def main():
         personality_deltas = analyze_personality(signals, stats)
         apply_personality(stats, personality_deltas)
         stats["lastPersonalitySession"] = session_id
+
+    # Evolution check
+    new_evo = check_evolution(stats)
+    if new_evo:
+        evos = load_json(EVOLUTIONS_FILE, {}).get("stages", [])
+        evo_name = next((e["name"] for e in evos if e["id"] == new_evo), new_evo)
+        evo_name = resolve_template(evo_name, name)
+        stats["evolution"] = new_evo
+        memory_lines.append(
+            f"- [{time_str}] {emoji} {name} EVOLVED into {evo_name}!"
+        )
+
+    # Achievement check
+    new_achievements = check_achievements(stats, signals, classification)
+    achv_data = load_json(ACHIEVEMENTS_FILE, {}).get("achievements", [])
+    achv_map = {a["id"]: a for a in achv_data}
+    achieved = stats.setdefault("achievements", [])
+    for aid in new_achievements:
+        achieved.append(aid)
+        info = achv_map.get(aid, {})
+        icon = info.get("icon", "🏅")
+        aname = info.get("name", aid)
+        memory_lines.append(
+            f"- [{time_str}] {icon} Achievement unlocked: {aname}!"
+        )
+
+    # Mood update
+    stats["mood"] = compute_mood(stats)
+
+    # Season tracking
+    update_season(stats, exp, task_type)
+
     stats["lastSeen"] = now.isoformat()
 
     save_stats(stats)

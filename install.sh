@@ -38,6 +38,8 @@ cp "$SCRIPT_DIR/update.py" "$BUDDY_DIR/update.py"
 cp "$SCRIPT_DIR/titles.json" "$BUDDY_DIR/titles.json"
 cp "$SCRIPT_DIR/phrases.json" "$BUDDY_DIR/phrases.json"
 cp "$SCRIPT_DIR/statusline.sh" "$BUDDY_DIR/statusline.sh"
+cp "$SCRIPT_DIR/evolutions.json" "$BUDDY_DIR/evolutions.json"
+cp "$SCRIPT_DIR/achievements.json" "$BUDDY_DIR/achievements.json"
 cp "$SCRIPT_DIR/buddy-hook.sh" "$HOOKS_DIR/buddy-hook.sh"
 
 chmod +x "$BUDDY_DIR/update.py"
@@ -118,30 +120,77 @@ mkdir -p "$SKILL_DIR"
 cat > "$SKILL_DIR/SKILL.md" << 'SKILL'
 ---
 name: buddy
-description: Show your buddy's RPG stats, level, attributes, and recent history. Use when user says "/buddy", "show buddy", "buddy stats", or asks about their buddy's level/progress.
+description: "Show buddy stats, interact with your buddy, or check achievements. Subcommands: /buddy (stats), /buddy feed, /buddy pet, /buddy battle, /buddy achievements, /buddy season. Use when user says /buddy or interacts with their companion."
 user_invocable: true
 ---
 
-# Buddy Status
+# Buddy System
 
-Read buddy's stats from `~/.claude/buddy/stats.json` and `~/.claude/buddy/config.json`, then display a formatted status card.
+Read buddy's data from `~/.claude/buddy/`. Config in `config.json`, live state in `stats.json`, phrases in `phrases.json`, achievements in `achievements.json`, evolutions in `evolutions.json`.
 
-## Instructions
+## Subcommands
 
-1. Read `~/.claude/buddy/config.json` for name and emoji
-2. Read `~/.claude/buddy/stats.json` for stats
-3. Read `~/.claude/buddy/phrases.json` for latest phrase
-4. Display a formatted status card with:
-   - Name, level, active title
-   - **Skill attributes**: All 5 bars (10 chars wide, █ filled ░ empty)
-   - Progress bar based on: next level cost = current_level * 50, fill = progress_exp / cost
-   - **Personality stats**: debugging, patience, chaos, wisdom, snark (each 0-100)
-     - Show as bar + value. Use emoji: 🐛 Debugging, ⏳ Patience, 🌀 Chaos, 🧠 Wisdom, 🔥 Snark
-     - Color: red/blue/magenta/cyan/yellow respectively
-   - Total EXP, all unlocked titles
-   - Latest unlocked phrase (last entry in `unlocked` array, look up in phrases.json, replace {name} with buddy name)
-   - Last 5 history entries, newest first
-   - Personality traits are behavioral: they change based on HOW you work, not WHAT you work on
+Parse the user's input to determine which subcommand:
+- `/buddy` or `/buddy stats` → show full status card
+- `/buddy feed` → feed interaction
+- `/buddy pet` → pet interaction
+- `/buddy battle` → compare stats
+- `/buddy achievements` → show achievements
+- `/buddy season` → show current season stats
+
+## Status Card (`/buddy` or `/buddy stats`)
+
+1. Read config.json, stats.json, phrases.json, evolutions.json
+2. Display:
+   - **Header**: name, emoji, level, active title, evolution stage, mood emoji
+   - **Skill attributes**: All 5 bars (10 chars wide, █ filled ░ empty), progress = exp toward next level / (current_level * 50)
+   - **Personality**: 🐛 Debugging, ⏳ Patience, 🌀 Chaos, 🧠 Wisdom, 🔥 Snark (0-100 bars)
+   - **Mood**: Current mood with emoji and tone description
+   - **Evolution**: Current stage name + description from evolutions.json, next stage conditions
+   - **Achievements**: List unlocked ones with icons. Show "??? — Hidden" for locked hidden ones, show name for locked non-hidden ones
+   - **Season**: Current month's total EXP, badges earned, dominant type
+   - **Latest phrase**: from phrases.json using last unlocked key
+   - **History**: last 5 entries newest first
+
+## Feed (`/buddy feed`)
+
+A fun interaction. Read stats.json, then:
+1. Pick a random "food" based on dominant skill (coding→pizza, design→sushi, research→ramen, devops→energy drink, writing→tea)
+2. Add +1 to a random personality stat (simulate nourishment)
+3. Save stats.json
+4. Print a cute message: "{emoji} {name} happily munches on {food}! (+1 {trait})"
+
+## Pet (`/buddy pet`)
+
+A fun interaction. Read stats.json, then:
+1. Respond based on current mood: zen→purrs, hyper→bounces, sass→tolerates it, nerd→explains why petting releases oxytocin, grit→nods stoically, chill→leans in
+2. Add +1 Patience, -1 Snark (petting calms them down)
+3. Save stats.json
+4. Print the response with emoji
+
+## Battle (`/buddy battle`)
+
+A fun comparison. Read stats.json, then:
+1. Generate a random "opponent" buddy with random stats (use current timestamp as seed for reproducibility)
+2. Compare each of the 5 personality stats
+3. Whoever wins more stats wins the battle
+4. Award a small bonus: +2 to the stat that won the most
+5. Print a dramatic battle report with round-by-round comparison
+
+## Achievements (`/buddy achievements`)
+
+Read stats.json and achievements.json:
+1. Show unlocked achievements with icon, name, and description
+2. Show locked achievements: if hidden show "??? — Hidden achievement", if not hidden show name + description greyed out
+3. Show progress: "X/Y achievements unlocked"
+
+## Season (`/buddy season`)
+
+Read stats.json seasons data for current month:
+1. Show month name, total EXP, session count
+2. Show breakdown by type with mini bar chart
+3. Show badges earned this season
+4. If previous seasons exist, show a comparison with last month
 SKILL
 echo "  ✓ Installed /buddy skill"
 
