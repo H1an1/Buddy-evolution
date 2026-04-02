@@ -19,13 +19,40 @@ BUDDY_NAME="${BUDDY_NAME:-Buddy}"
 read -p "Pick an emoji for $BUDDY_NAME (default: 🤖): " BUDDY_EMOJI
 BUDDY_EMOJI="${BUDDY_EMOJI:-🤖}"
 
-# Ask for species
+# Auto-detect current species
 echo ""
-echo "What species is your buddy? (Run /buddy in Claude Code to check)"
-echo "  duck, goose, blob, cat, dragon, octopus, owl, penguin,"
-echo "  turtle, snail, ghost, axolotl, capybara, cactus, robot,"
-echo "  rabbit, mushroom, chonk"
-read -p "Species (blank to allow species to change when stats evolve): " BUDDY_SPECIES
+echo "Detecting your buddy's species..."
+BUDDY_SPECIES=""
+DETECTED_SPECIES=$(python3 -c "
+import json, os, sys
+sys.path.insert(0, '$SCRIPT_DIR')
+from patcher import get_user_id, roll, ORIGINAL_SALT, get_saved_salt, SPECIES
+
+uid = get_user_id()
+# Try current salt first (might be patched), then original
+salt = get_saved_salt() or ORIGINAL_SALT
+result = roll(uid, salt, use_bun=False)
+print(result['species'])
+" 2>/dev/null)
+
+if [[ -n "$DETECTED_SPECIES" ]]; then
+    echo "  Detected: $DETECTED_SPECIES"
+    read -p "Keep $DETECTED_SPECIES? [Y/n]: " KEEP_SPECIES
+    if [[ -z "$KEEP_SPECIES" || "$KEEP_SPECIES" =~ ^[Yy] ]]; then
+        BUDDY_SPECIES="$DETECTED_SPECIES"
+    else
+        echo "  Species: duck, goose, blob, cat, dragon, octopus, owl, penguin,"
+        echo "           turtle, snail, ghost, axolotl, capybara, cactus, robot,"
+        echo "           rabbit, mushroom, chonk"
+        read -p "  Enter species: " BUDDY_SPECIES
+    fi
+else
+    echo "  Could not auto-detect. Run /buddy in Claude Code to check."
+    echo "  Species: duck, goose, blob, cat, dragon, octopus, owl, penguin,"
+    echo "           turtle, snail, ghost, axolotl, capybara, cactus, robot,"
+    echo "           rabbit, mushroom, chonk"
+    read -p "  Enter species: " BUDDY_SPECIES
+fi
 
 # Ask for memory dir
 echo ""
