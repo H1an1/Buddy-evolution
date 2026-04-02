@@ -19,13 +19,13 @@ BUDDY_NAME="${BUDDY_NAME:-Buddy}"
 read -p "Pick an emoji for $BUDDY_NAME (default: 🤖): " BUDDY_EMOJI
 BUDDY_EMOJI="${BUDDY_EMOJI:-🤖}"
 
-# Ask for species lock
+# Ask for species
 echo ""
-echo "Optional: lock your buddy's species so it doesn't change when stats evolve."
-echo "Species: duck, goose, blob, cat, dragon, octopus, owl, penguin,"
-echo "         turtle, snail, ghost, axolotl, capybara, cactus, robot,"
-echo "         rabbit, mushroom, chonk"
-read -p "Lock species (blank to skip): " BUDDY_SPECIES
+echo "What species is your buddy? (Run /buddy in Claude Code to check)"
+echo "  duck, goose, blob, cat, dragon, octopus, owl, penguin,"
+echo "  turtle, snail, ghost, axolotl, capybara, cactus, robot,"
+echo "  rabbit, mushroom, chonk"
+read -p "Species (blank to allow species to change when stats evolve): " BUDDY_SPECIES
 
 # Ask for memory dir
 echo ""
