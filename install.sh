@@ -19,20 +19,70 @@ BUDDY_NAME="${BUDDY_NAME:-Buddy}"
 read -p "Pick an emoji for $BUDDY_NAME (default: 🤖): " BUDDY_EMOJI
 BUDDY_EMOJI="${BUDDY_EMOJI:-🤖}"
 
-# Auto-detect current species
+# Auto-detect species from user ID hash (same algorithm as Claude Code)
 echo ""
 echo "Detecting your buddy's species..."
 BUDDY_SPECIES=""
 DETECTED_SPECIES=$(python3 -c "
-import json, os, sys
-sys.path.insert(0, '$SCRIPT_DIR')
-from patcher import get_user_id, roll, ORIGINAL_SALT, get_saved_salt, SPECIES
+import json, pathlib, subprocess, shutil
 
-uid = get_user_id()
-# Try current salt first (might be patched), then original
-salt = get_saved_salt() or ORIGINAL_SALT
-result = roll(uid, salt, use_bun=False)
-print(result['species'])
+SALT = 'friend-2026-401'
+SPECIES = ['duck','goose','blob','cat','dragon','octopus','owl','penguin',
+           'turtle','snail','ghost','axolotl','capybara','cactus','robot',
+           'rabbit','mushroom','chonk']
+RARITY_W = [60, 25, 10, 4, 1]
+
+def fnv1a(s):
+    h = 2166136261
+    for c in s:
+        h = ((h ^ ord(c)) * 16777619) & 0xFFFFFFFF
+    return h
+
+def bun_hash(s):
+    bun = shutil.which('bun') or str(pathlib.Path.home() / '.bun' / 'bin' / 'bun')
+    if not pathlib.Path(bun).exists():
+        return None
+    try:
+        r = subprocess.run([bun, '-e', f'console.log(Number(Bun.hash(\"{s}\")&0xFFFFFFFFn))'],
+                           capture_output=True, text=True, timeout=5)
+        return int(r.stdout.strip()) if r.returncode == 0 else None
+    except:
+        return None
+
+class Mulberry32:
+    def __init__(self, seed):
+        self.a = seed & 0xFFFFFFFF
+    def next(self):
+        self.a = (self.a + 0x6D2B79F5) & 0xFFFFFFFF
+        t = self.a
+        t = ((t ^ (t >> 15)) * (1 | t)) & 0xFFFFFFFF
+        t = ((t + (((t ^ (t >> 7)) * (61 | t)) & 0xFFFFFFFF)) ^ t) & 0xFFFFFFFF
+        return ((t ^ (t >> 14)) & 0xFFFFFFFF) / 4294967296.0
+    def pick(self, arr):
+        return arr[int(self.next() * len(arr))]
+
+# Read user ID
+uid = None
+for p in [pathlib.Path.home()/'.claude.json', pathlib.Path.home()/'.claude'/'.config.json']:
+    if p.exists():
+        try:
+            cfg = json.loads(p.read_text())
+            uid = cfg.get('oauthAccount',{}).get('accountUuid') or cfg.get('userID')
+            if uid: break
+        except: pass
+if not uid:
+    raise SystemExit(1)
+
+# Prefer Bun.hash (matches official), fallback to FNV-1a
+seed = bun_hash(uid + SALT) or fnv1a(uid + SALT)
+rng = Mulberry32(seed)
+# Roll rarity first, then species (same order as official)
+total = sum(RARITY_W)
+roll = rng.next() * total
+for w in RARITY_W:
+    roll -= w
+    if roll < 0: break
+print(rng.pick(SPECIES))
 " 2>/dev/null)
 
 if [[ -n "$DETECTED_SPECIES" ]]; then
@@ -40,14 +90,11 @@ if [[ -n "$DETECTED_SPECIES" ]]; then
     read -p "Keep $DETECTED_SPECIES? [Y/n]: " KEEP_SPECIES
     if [[ -z "$KEEP_SPECIES" || "$KEEP_SPECIES" =~ ^[Yy] ]]; then
         BUDDY_SPECIES="$DETECTED_SPECIES"
-    else
-        echo "  Species: duck, goose, blob, cat, dragon, octopus, owl, penguin,"
-        echo "           turtle, snail, ghost, axolotl, capybara, cactus, robot,"
-        echo "           rabbit, mushroom, chonk"
-        read -p "  Enter species: " BUDDY_SPECIES
     fi
-else
-    echo "  Could not auto-detect. Run /buddy in Claude Code to check."
+fi
+
+if [[ -z "$BUDDY_SPECIES" ]]; then
+    echo "  Could not auto-detect. Run /buddy in Claude Code to check yours."
     echo "  Species: duck, goose, blob, cat, dragon, octopus, owl, penguin,"
     echo "           turtle, snail, ghost, axolotl, capybara, cactus, robot,"
     echo "           rabbit, mushroom, chonk"
