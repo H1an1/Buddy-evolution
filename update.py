@@ -406,35 +406,6 @@ def apply_personality(stats: dict, deltas: dict[str, int]) -> bool:
     return old_dominant != new_dominant
 
 
-def trigger_buddy_reroll(dominant_trait: str):
-    """Trigger a binary patch so official buddy stats match growth.
-
-    Runs in background to avoid blocking. Maps our personality trait
-    names to the official stat names.
-    """
-    TRAIT_TO_STAT = {
-        "debugging": "DEBUGGING",
-        "patience": "PATIENCE",
-        "chaos": "CHAOS",
-        "wisdom": "WISDOM",
-        "snark": "SNARK",
-    }
-    target = TRAIT_TO_STAT.get(dominant_trait)
-    if not target:
-        return
-
-    patcher_script = BUDDY_DIR / "patcher.py"
-    if not patcher_script.exists():
-        return
-
-    # Run in background — patching takes a few seconds
-    subprocess.Popen(
-        [sys.executable, str(patcher_script), target],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
-
-
 # ── Evolution System ──────────────────────────────────────────────
 
 EVOLUTIONS_FILE = BUDDY_DIR / "evolutions.json"
@@ -923,15 +894,14 @@ def main():
         dominant_changed = apply_personality(stats, personality_deltas)
         stats["lastPersonalitySession"] = session_id
 
-        # If dominant trait changed, re-roll official buddy stats to match
+        # Log dominant trait shift
         if dominant_changed:
             new_dominant = max(
                 stats.get("personality", {}),
                 key=stats.get("personality", {}).get,
             )
-            trigger_buddy_reroll(new_dominant)
             memory_lines.append(
-                f"- [{time_str}] {emoji} {name}'s dominant trait shifted to {new_dominant.capitalize()}! Re-rolling official stats..."
+                f"- [{time_str}] {emoji} {name}'s dominant trait shifted to {new_dominant.capitalize()}!"
             )
 
     # Evolution check
