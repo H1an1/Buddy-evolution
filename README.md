@@ -1,12 +1,12 @@
 # Claude Buddy
 
-An RPG-style upgrade system for your Claude Code companion. Your buddy gains EXP from your daily tasks, levels up attributes, and unlocks titles and phrases.
+An RPG-style upgrade system for your Claude Code companion. Your buddy grows in two dimensions: **skill attributes** from the type of work you do, and **personality traits** from how you work.
 
 ## Install
 
 ```bash
-git clone https://github.com/user/claude-buddy.git
-cd claude-buddy
+git clone https://github.com/H1an1/Buddy-evolution.git
+cd Buddy-evolution
 ./install.sh
 ```
 
@@ -33,7 +33,9 @@ Checks for level-ups and title unlocks
 Statusline updates in real-time
 ```
 
-## Attributes
+## Skill Attributes
+
+Classified each turn by keyword matching. Determines **what** you're working on.
 
 | Attribute | What earns EXP |
 |-----------|---------------|
@@ -43,16 +45,29 @@ Statusline updates in real-time
 | **DevOps** | Deployment, CI/CD, infrastructure, monitoring |
 | **Writing** | Documentation, blog posts, specs, content |
 
+## Personality Traits
+
+Analyzed once per session from behavioral signals. Determines **how** you work.
+
+| Trait | Range | Goes up when... | Goes down when... |
+|-------|-------|----------------|-------------------|
+| 🐛 **Debugging** | 0–100 | Errors → retries → success, heavy Bash usage | Only running commands, never writing code |
+| ⏳ **Patience** | 0–100 | Long sessions (2h+), late night work, high message count | — |
+| 🌀 **Chaos** | 0–100 | Project-hopping, many tool types, parallel Agents | — |
+| 🧠 **Wisdom** | 0–100 | Reading more than writing, using WebSearch | — |
+| 🔥 **Snark** | 0–100 | Days of absence (buddy gets snarky), very short sessions | Daily usage (buddy calms down) |
+
 ## Leveling
 
 - **Attribute levels**: Each level costs `current_level × 50` EXP
 - **Total level**: Based on sum of all EXP, costs `current_level × 200`
-- **EXP per task**: Small (5-10), Medium (15-25), Large (30-50)
+- **EXP per task**: Small (5–10), Medium (15–25), Large (30–50)
+- **Personality**: Starts at 50, drifts based on your behavior over time
 
 ## Commands
 
-- **Statusline**: Always visible — shows buddy name, level, top 3 attributes
-- **/buddy**: Full stats panel with progress bars, titles, and history
+- **Statusline**: Always visible — shows level, top 3 skills, and dominant personality trait
+- **/buddy**: Full stats panel with progress bars, personality, titles, and history
 
 ## Customization
 
