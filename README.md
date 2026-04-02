@@ -67,7 +67,12 @@ Analyzed once per session from behavioral signals. Determines **how** you work.
 ## Commands
 
 - **Statusline**: Always visible — shows level, top 3 skills, and dominant personality trait
-- **/buddy**: Full stats panel with progress bars, personality, titles, and history
+- **/growth**: Full stats panel with progress bars, personality, titles, and history
+- **/growth feed**: Feed your buddy (+1 random personality stat)
+- **/growth pet**: Pet your buddy (+1 Patience, -1 Snark)
+- **/growth battle**: Battle a random opponent
+- **/growth achievements**: View unlocked and hidden achievements
+- **/growth season**: Monthly stats and badges
 
 ## Customization
 

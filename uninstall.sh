@@ -12,7 +12,7 @@ fi
 
 rm -rf "$HOME/.claude/buddy"
 rm -f "$HOME/.claude/hooks/buddy-hook.sh"
-rm -rf "$HOME/.claude/skills/buddy-status"
+rm -rf "$HOME/.claude/skills/buddy-growth"
 
 # Remove hook from settings.json
 if [[ -f "$HOME/.claude/settings.json" ]]; then

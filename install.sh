@@ -115,7 +115,7 @@ else
 fi
 
 # Install skill for /buddy command
-SKILL_DIR="$HOME/.claude/skills/buddy-status"
+SKILL_DIR="$HOME/.claude/skills/buddy-growth"
 mkdir -p "$SKILL_DIR"
 cat > "$SKILL_DIR/SKILL.md" << 'SKILL'
 ---
