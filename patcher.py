@@ -162,87 +162,90 @@ def random_salt(length: int = SALT_LENGTH) -> str:
     return "".join(random.choice(chars) for _ in range(length))
 
 
+def bun_hash_batch(strings: list[str]) -> list[int | None]:
+    """Hash multiple strings in one bun subprocess call for speed."""
+    if not strings:
+        return []
+    script = (
+        "const lines = (await Bun.stdin.text()).split('\\n').filter(Boolean);"
+        "const results = lines.map(s => Number(BigInt(Bun.hash(s)) & 0xffffffffn));"
+        "process.stdout.write(results.join('\\n'));"
+    )
+    try:
+        r = subprocess.run(
+            ["bun", "-e", script],
+            input="\n".join(strings), capture_output=True, text=True, timeout=30,
+        )
+        if r.returncode == 0:
+            return [int(x) for x in r.stdout.strip().split("\n")]
+    except (subprocess.TimeoutExpired, FileNotFoundError, ValueError):
+        pass
+    return [None] * len(strings)
+
+
+def _roll_from_hash(h: int) -> dict:
+    """Roll a complete buddy from a hash value."""
+    rng = Mulberry32(h)
+    rarity = roll_rarity(rng)
+    species = rng.pick(SPECIES)
+    eye = rng.pick(EYES)
+    hat = "none" if rarity == "common" else rng.pick(HATS)
+    shiny = rng.next() < 0.01
+    stats = roll_stats(rng, rarity)
+    peak = max(stats, key=stats.get)
+    dump = min(stats, key=stats.get)
+    return {"species": species, "rarity": rarity, "stats": stats, "peak": peak, "dump": dump}
+
+
 def find_salt(user_id: str, target_peak: str, target_dump: str | None = None,
-              target_species: str | None = None, max_attempts: int = 500000,
+              target_species: str | None = None, max_attempts: int = 20000,
               use_bun: bool = True) -> dict | None:
     """Brute-force search for a salt producing desired traits.
 
-    Args:
-        user_id: Claude user ID
-        target_peak: The stat that should be highest (e.g. "PATIENCE")
-        target_dump: The stat that should be lowest (optional)
-        target_species: Desired species (optional)
-        max_attempts: Max search iterations
-        use_bun: Whether to use Bun.hash (slower but accurate for macOS)
-
-    Returns dict with salt and roll result, or None if not found.
+    Uses batch Bun.hash calls (200 per batch) for accuracy on macOS.
+    Falls back to FNV-1a if bun is unavailable.
     """
     target_peak = target_peak.upper()
     if target_dump:
         target_dump = target_dump.upper()
 
-    # For Bun hash, batch the hash calls for performance
-    # Actually for brute force we need FNV-1a (fast, in-process)
-    # Then verify the final salt with Bun hash
+    BATCH_SIZE = 200
     best = None
-    best_score = -1
+    total = 0
 
-    for i in range(max_attempts):
-        salt = random_salt()
-        # Use FNV-1a for speed during search
-        h = fnv1a(user_id + salt)
-        rng = Mulberry32(h)
+    for _ in range(max_attempts // BATCH_SIZE):
+        salts = [random_salt() for _ in range(BATCH_SIZE)]
+        keys = [user_id + s for s in salts]
 
-        # Quick bail: check species first if targeted
-        rarity = roll_rarity(rng)
-        species = rng.pick(SPECIES)
+        if use_bun:
+            hashes = bun_hash_batch(keys)
+        else:
+            hashes = [fnv1a(k) for k in keys]
 
-        if target_species and species != target_species:
-            continue
+        total += BATCH_SIZE
 
-        eye = rng.pick(EYES)
-        hat = "none" if rarity == "common" else rng.pick(HATS)
-        shiny = rng.next() < 0.01
-        stats = roll_stats(rng, rarity)
+        for salt, h in zip(salts, hashes):
+            if h is None:
+                continue
+            result = _roll_from_hash(h)
 
-        # Check peak stat
-        actual_peak = max(stats, key=stats.get)
-        if actual_peak != target_peak:
-            continue
-
-        # Check dump stat if specified
-        if target_dump:
-            actual_dump = min(stats, key=stats.get)
-            if actual_dump != target_dump:
+            if target_species and result["species"] != target_species:
+                continue
+            if result["peak"] != target_peak:
+                continue
+            if target_dump and result["dump"] != target_dump:
                 continue
 
-        # Score: higher peak value + lower dump value = better
-        score = stats[target_peak]
-        if target_dump:
-            score += (100 - stats[target_dump])
-
-        if score > best_score:
-            best_score = score
-            best = {
-                "salt": salt,
-                "rarity": rarity,
-                "species": species,
-                "stats": stats,
-                "attempts": i + 1,
-            }
-            # Good enough if peak is 80+
-            if stats[target_peak] >= 80:
-                break
-
-    if best and use_bun:
-        # Verify with Bun hash — the actual hash Claude Code uses
-        verified = roll(user_id, best["salt"], use_bun=True)
-        if max(verified["stats"], key=verified["stats"].get) == target_peak:
-            best["stats"] = verified["stats"]
-            best["verified_bun"] = True
-        else:
-            # FNV-1a and Bun.hash disagree — need to search with Bun
-            best["verified_bun"] = False
+            if best is None or result["stats"][target_peak] > best["stats"][target_peak]:
+                best = {
+                    "salt": salt,
+                    "rarity": result["rarity"],
+                    "species": result["species"],
+                    "stats": result["stats"],
+                    "attempts": total,
+                }
+                if result["stats"][target_peak] >= 80:
+                    return best
 
     return best
 
