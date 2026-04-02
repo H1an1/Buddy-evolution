@@ -183,18 +183,20 @@ def pick_summary(user_messages: list[str]) -> str:
     return max(candidates, key=len)[:80]
 
 
-def analyze_personality(signals: dict, stats: dict) -> dict[str, int]:
+FRUSTRATION_SIGNALS = [
+    "fuck", "shit", "damn", "wtf", "crap", "hell", "stupid", "idiot",
+    "trash", "garbage", "useless", "broken", "hate", "worst", "terrible",
+    "awful", "sucks", "bullshit", "ridiculous", "annoying",
+    "妈的", "操", "卧槽", "草", "傻逼", "垃圾", "废物", "坑爹",
+    "什么鬼", "搞毛", "烦死", "崩溃", "无语", "坑",
+]
+
+
+def analyze_personality(signals: dict, stats: dict, user_messages: list[str] | None = None) -> dict[str, int]:
     """Analyze behavioral signals and return personality stat changes.
 
-    Returns a dict of {attribute: delta} where delta can be positive or negative.
-    Each attribute is clamped to 0-100 after applying.
-
-    Personality attributes:
-      debugging  — retry patterns, error→success arcs, tool diversity
-      patience   — long sessions, late night work, high message counts
-      chaos      — project switching, many sessions/day, unpredictable patterns
-      wisdom     — Read/Grep heavy, code reading vs writing ratio
-      snark      — grows when absent, shrinks with frequent use
+    Values are kept small (±1 to ±3 per session) so attributes drift
+    slowly over weeks, not spike in a day. Range 0-100, start at 50.
     """
     deltas = {"debugging": 0, "patience": 0, "chaos": 0, "wisdom": 0, "snark": 0}
     tools = signals.get("tool_counts", {})
@@ -205,21 +207,16 @@ def analyze_personality(signals: dict, stats: dict) -> dict[str, int]:
     project_count = signals.get("cwds", 1)
 
     # --- DEBUGGING ---
-    # Errors followed by retries = persistence in debugging
     if errors > 0 and retries > 0:
-        # Breakthrough bonus: failed then succeeded
-        deltas["debugging"] += min(retries * 3, 15)
-    # Bash usage (running commands, testing) helps debugging
+        deltas["debugging"] += min(retries, 3)  # max +3
     bash_count = tools.get("Bash", 0)
-    if bash_count > 5:
-        deltas["debugging"] += 2
-    # Only running commands without writing code → debugging drops
+    if bash_count > 10:
+        deltas["debugging"] += 1
     write_tools = tools.get("Edit", 0) + tools.get("Write", 0)
-    if bash_count > 10 and write_tools == 0:
-        deltas["debugging"] -= 2
+    if bash_count > 15 and write_tools == 0:
+        deltas["debugging"] -= 1
 
     # --- PATIENCE ---
-    # Session duration
     if len(timestamps) >= 2:
         try:
             from datetime import datetime as _dt
@@ -227,67 +224,58 @@ def analyze_personality(signals: dict, stats: dict) -> dict[str, int]:
             last = _dt.fromisoformat(timestamps[-1].replace("Z", "+00:00"))
             duration_min = (last - first).total_seconds() / 60.0
             if duration_min > 120:
-                deltas["patience"] += 5  # 2+ hours = very patient
+                deltas["patience"] += 2
             elif duration_min > 60:
-                deltas["patience"] += 3
-            elif duration_min > 30:
                 deltas["patience"] += 1
 
-            # Late night bonus (22:00-04:00 local time)
-            hour = last.hour  # UTC, but still a signal
+            # Late night bonus
+            hour = last.hour
             if hour >= 22 or hour < 4:
-                deltas["patience"] += 2  # burning the midnight oil
+                deltas["patience"] += 1
         except (ValueError, ImportError):
             pass
 
-    # High message count = sticking with it
     if msg_count > 50:
-        deltas["patience"] += 3
-    elif msg_count > 20:
         deltas["patience"] += 1
 
-    # --- CHAOS ---
-    # Multiple projects in one session
-    if project_count >= 3:
-        deltas["chaos"] += 5
-    elif project_count >= 2:
-        deltas["chaos"] += 2
+    # Frustration / rude language → patience drops
+    if user_messages:
+        all_text = " ".join(user_messages).lower()
+        frustration_hits = sum(1 for word in FRUSTRATION_SIGNALS if word in all_text)
+        if frustration_hits >= 3:
+            deltas["patience"] -= 3  # very frustrated
+        elif frustration_hits >= 1:
+            deltas["patience"] -= 1
 
-    # Many tool types used = chaotic energy
-    unique_tools = len(tools)
-    if unique_tools >= 8:
-        deltas["chaos"] += 3
-    elif unique_tools >= 5:
+    # --- CHAOS ---
+    if project_count >= 3:
+        deltas["chaos"] += 2
+    elif project_count >= 2:
         deltas["chaos"] += 1
 
-    # Agent spawning = parallel chaos
+    unique_tools = len(tools)
+    if unique_tools >= 8:
+        deltas["chaos"] += 1
+
     agent_count = tools.get("Agent", 0)
-    if agent_count >= 3:
-        deltas["chaos"] += 3
+    if agent_count >= 5:
+        deltas["chaos"] += 1
 
     # --- WISDOM ---
-    # Reading code (Read, Grep, Glob) vs writing (Edit, Write)
     read_tools = tools.get("Read", 0) + tools.get("Grep", 0) + tools.get("Glob", 0)
     if read_tools > 10:
-        deltas["wisdom"] += 3
-    elif read_tools > 5:
         deltas["wisdom"] += 1
 
-    # High read-to-write ratio = studying, not just hacking
     if read_tools > 0 and write_tools > 0:
         ratio = read_tools / write_tools
         if ratio > 3:
-            deltas["wisdom"] += 3  # mostly reading = wise
-        elif ratio > 1.5:
             deltas["wisdom"] += 1
 
-    # WebSearch/WebFetch = seeking knowledge
     web_count = tools.get("WebSearch", 0) + tools.get("WebFetch", 0)
     if web_count > 0:
-        deltas["wisdom"] += 2
+        deltas["wisdom"] += 1
 
     # --- SNARK ---
-    # Snark grows with absence, shrinks with presence
     last_seen = stats.get("lastSeen")
     if last_seen:
         try:
@@ -296,19 +284,23 @@ def analyze_personality(signals: dict, stats: dict) -> dict[str, int]:
             now = _dt.now()
             days_away = (now - last_dt).days
             if days_away >= 7:
-                deltas["snark"] += 8   # gone a week? very snarky
+                deltas["snark"] += 3
             elif days_away >= 3:
-                deltas["snark"] += 4
-            elif days_away >= 1:
                 deltas["snark"] += 1
             else:
-                deltas["snark"] -= 1   # using it daily = less snarky
+                deltas["snark"] -= 1  # daily use = calmer
         except (ValueError, ImportError):
             pass
 
-    # Short sessions = buddy gets bored = snarky
     if msg_count < 5:
-        deltas["snark"] += 2
+        deltas["snark"] += 1
+
+    # Frustration also makes snark go up (buddy mirrors your mood)
+    if user_messages:
+        all_text = " ".join(user_messages).lower()
+        frustration_hits = sum(1 for word in FRUSTRATION_SIGNALS if word in all_text)
+        if frustration_hits >= 1:
+            deltas["snark"] += 1
 
     return deltas
 
@@ -826,7 +818,7 @@ def main():
     session_id = signals.get("session_id")
     last_personality_session = stats.get("lastPersonalitySession")
     if session_id and session_id != last_personality_session:
-        personality_deltas = analyze_personality(signals, stats)
+        personality_deltas = analyze_personality(signals, stats, user_messages)
         dominant_changed = apply_personality(stats, personality_deltas)
         stats["lastPersonalitySession"] = session_id
 
